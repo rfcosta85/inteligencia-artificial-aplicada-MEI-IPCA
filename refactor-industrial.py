@@ -1,5 +1,7 @@
 !pip install supabase
 import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
 import threading
 import numpy as np
 import random
@@ -10,12 +12,17 @@ from sklearn.metrics import accuracy_score, balanced_accuracy_score, average_pre
 from sklearn.model_selection import train_test_split
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.svm import SVC
+from sklearn import tree
 from sklearn.neural_network import MLPClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.inspection import DecisionBoundaryDisplay
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from sklearn.preprocessing import LabelEncoder
+from sklearn.tree import plot_tree
+from mlxtend.plotting import plot_decision_regions
+from tabulate import tabulate
 
 drive.mount('/content/drive')
 
@@ -72,6 +79,35 @@ def calculate_metrics(y_test, predict):
         "specific": None
     }
 
+def plot_svm_decision_boundary(model, X_train, y_train):
+    if X_train.shape[1] < 2:
+        print("Não há features suficientes para plotar a fronteira de decisão.")
+        return
+
+    # Pegamos apenas as duas primeiras colunas para visualização
+    feature_1 = X_train.columns[0]
+    feature_2 = X_train.columns[1]
+
+    X_subset = X_train[[feature_1, feature_2]]
+
+    # Pegamos os coeficientes do modelo SVM
+    w = model.coef_[0]
+    w0 = model.intercept_[0]
+
+    # Criamos os pontos para a linha de decisão
+    x = np.linspace(X_subset.iloc[:, 0].min(), X_subset.iloc[:, 0].max(), 100)
+    y = (-w[0] * x - w0) / w[1]
+
+    # Plotamos os pontos e a fronteira de decisão
+    plt.figure(figsize=(8, 6))
+    plt.scatter(X_subset.iloc[:, 0], X_subset.iloc[:, 1], c=y_train, s=60, cmap='coolwarm', edgecolors='k')
+    plt.plot(x, y, 'r', label="Fronteira de decisão")
+    plt.xlabel(feature_1)
+    plt.ylabel(feature_2)
+    plt.title("SVM - Fronteira de Decisão")
+    plt.legend()
+    plt.show()
+
 # Recriar o modelo
 def recreate_model(model_name, test_size, random_state):
   X_train, X_test, y_train, y_test = train_test_split(X, y, test_size= test_size, random_state= random_state)
@@ -104,7 +140,24 @@ def train_and_evaluate_model(model, X, y, test_size, random_state, results):
             "random_state": random_state
         }
     })
+    import matplotlib.pyplot as plt
+from sklearn.tree import plot_tree
 
+# Modificando a função para incluir o gráfico SOMENTE se for test_size == 0.2
+def train_and_evaluate_model(model, X, y, test_size, random_state, results):
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_state)
+    model.fit(X_train, y_train)
+
+    # Salva os resultados
+    results.append({
+        "model": model.__class__.__name__,
+        "metrics": calculate_metrics(y_test, model.predict(X_test)),
+        "hyperparameters": {
+            "test_size": test_size,
+            "random_state": random_state
+        }
+    })
+   
 lock = threading.Lock()
 max_threads = 25
 results = []
@@ -207,3 +260,37 @@ caseToPredict = row_selected.drop(columns=["faulty"])
 betterModel = recreate_model(best_model["model"], best_model["test_size"], best_model["random_state"])
 print(f'Real: A máquina analisada, {"está com defeito" if machine_real_state == 1 else "não está com defeito"}')
 print(f'Prediction: A máquina analisada, {"está com defeito" if betterModel.predict(caseToPredict)[0] == 1 else "não está com defeito"}')
+
+# Selecionar as métricas principais para comparação
+metrics_to_plot = ["accuracy", "precision", "recall", "f1", "roc_auc"]
+
+# Plotando um gráfico de barras
+plt.figure(figsize=(10,6))
+sns.barplot(x="model", y="recall", data=results_df.sort_values("recall", ascending=False))
+plt.xticks(rotation=45)
+plt.title("Modelos com Melhor Recall")
+plt.show()
+
+# Melhores accuracy
+plt.figure(figsize=(10,6))
+sns.barplot(x="model", y="accuracy", data=results_df.sort_values("accuracy", ascending=False))
+plt.xticks(rotation=45)
+plt.title("Modelos com melhor accuraccy")
+
+# Melhores precision
+plt.figure(figsize=(10,6))
+sns.barplot(x="model", y="precision", data=results_df.sort_values("precision", ascending=False))
+plt.xticks(rotation=45)
+plt.title("Modelos com melhor precision")
+
+# Melhores F1
+plt.figure(figsize=(10,6))
+sns.barplot(x="model", y="f1", data=results_df.sort_values("f1", ascending=False))
+plt.xticks(rotation=45)
+plt.title("Modelos com melhor F1")
+
+# Melhores roc_auc
+plt.figure(figsize=(10,6))
+sns.barplot(x="model", y="roc_auc", data=results_df.sort_values("roc_auc", ascending=False))
+plt.xticks(rotation=45)
+plt.title("Modelos com melhor roc_auc")
